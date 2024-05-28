@@ -1,56 +1,62 @@
 import os
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torchvision import datasets, transforms, models
-from torch.utils.data import Dataset, DataLoader
-from skimage import io
+import torch.nn.functional as F
+from torchvision import transforms
+from PIL import Image
 
-class MyDataset(Dataset):
-    def __init__(self, root_dir, names_file, transform=None):
-        self.root_dir = root_dir  # 根目录
-        self.names_file = names_file  # .txt文件路径
-        self.transform = transform  # 数据预处理
-        self.size = 0  # 数据集大小
-        self.names_list = []  # 数据集路径列表
+# 定义与训练时相同的模型
+class SimpleCNN(nn.Module):
+    def __init__(self):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc1 = nn.Linear(32 * 56 * 56, 128)
+        self.fc2 = nn.Linear(128, 1)
 
-        if not os.path.isfile(self.names_file):
-            print(self.names_file + ' does not exist!')
-            return
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 32 * 56 * 56)
+        x = F.relu(self.fc1(x))
+        x = torch.sigmoid(self.fc2(x))
+        return x
+
+# 加载模型权重
+model = SimpleCNN()
+model.load_state_dict(torch.load('simple_cnn_epoch_32_loss_0.0319.pth'))
+model = model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+model.eval()  # 切换到评估模式
+
+def read_image_paths(file_path):
+    with open(file_path, 'r') as file:
+        return [line.strip() for line in file if line.strip()]
+
+
+# 预处理函数
+def preprocess_images(image_paths):
+    images = []
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+    ])
+    for image_path in image_paths:
+        image = Image.open(image_path).convert('RGB')
+        image = transform(image)
+        images.append(image)
         
-        with open(self.names_file) as file:
-            for f in file:  # 循环读取.txt文件总每行数据信息
-                self.names_list.append(f.strip())  # 去除换行符
-                self.size += 1
+    images = torch.stack(images)  # 组合成一个批次
+    return images
+# 加载并预处理图像
+image_paths = read_image_paths('C:/Users/Peace/workspace/yolo/dataset/val/image_paths.txt')
 
-    def __len__(self):
-        return self.size
+input_images = preprocess_images(image_paths)
+input_images = input_images.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
-    def __getitem__(self, index):
-        image_path = os.path.join(self.root_dir, self.names_list[index].split(' ')[0])  # 获取图片数据路径
-        if not os.path.isfile(image_path):
-            print(image_path + ' does not exist!')
-            return None
-        image = io.imread(image_path)  # 读取图片
-        label = int(self.names_list[index].split(' ')[1])  # 读取标签
-
-        if self.transform:
-            image = self.transform(image)  # 应用预处理
-
-        return image, label
-
-# 定义数据预处理
-data_transform = transforms.Compose([
-    transforms.ToPILImage(),  # 将numpy数组转为PIL图像
-    transforms.Resize((224, 224)),  # 调整图像大小
-    transforms.ToTensor(),  # 将PIL图像转为Tensor
-])
-
-train_dataset = MyDataset(root_dir='./IMAGEDATA/train', names_file='./IMAGEDATA/train/train.txt', transform=data_transform)
-
-trainset_dataloader = DataLoader(dataset=train_dataset, batch_size=1, shuffle=True, num_workers=0)
-
-# 测试数据加载器
-for images, labels in trainset_dataloader:
-    print(images.shape, labels)
-    break
+# 进行预测
+with torch.no_grad():  # 禁用梯度计算
+    output = model(input_images)
+    outputs = model(input_images)
+    predictions = torch.round(outputs).squeeze()
+print('Prediction:', predictions)
