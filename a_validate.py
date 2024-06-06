@@ -13,19 +13,20 @@ class SimpleCNN(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.fc1 = nn.Linear(32 * 56 * 56, 128)
-        self.fc2 = nn.Linear(128, 1)
+        self.fc2 = nn.Linear(128, 3)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = x.view(-1, 32 * 56 * 56)
         x = F.relu(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
+        x = self.fc2(x)  
+     
         return x
 
 # 加载模型权重
 model = SimpleCNN()
-model.load_state_dict(torch.load('simple_cnn_epoch_32_loss_0.0319.pth'))
+model.load_state_dict(torch.load('simple_cnn_epoch_50_loss_0.0131.pth'))
 model = model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 model.eval()  # 切换到评估模式
 
@@ -45,7 +46,6 @@ def preprocess_images(image_paths):
         image = Image.open(image_path).convert('RGB')
         image = transform(image)
         images.append(image)
-        
     images = torch.stack(images)  # 组合成一个批次
     return images
 # 加载并预处理图像
@@ -56,7 +56,6 @@ input_images = input_images.to(torch.device("cuda" if torch.cuda.is_available() 
 
 # 进行预测
 with torch.no_grad():  # 禁用梯度计算
-    output = model(input_images)
     outputs = model(input_images)
-    predictions = torch.round(outputs).squeeze()
-print('Prediction:', predictions)
+    predictions = torch.argmax(outputs, dim=1)
+print('Predictions:', predictions.cpu().numpy())

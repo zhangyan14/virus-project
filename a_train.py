@@ -75,28 +75,28 @@ class SimpleCNN(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         self.fc1 = nn.Linear(32 * 56 * 56, 128)
-        self.fc2 = nn.Linear(128, 1)  # 二分类问题，输出为1
+        self.fc2 = nn.Linear(128, 3)  # 二分类问题，输出为3
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))  # 卷积层1 + ReLU + 池化层
-
         x = self.pool(F.relu(self.conv2(x)))  # 卷积层2 + ReLU + 池化层
         x = x.view(-1, 32 * 56 * 56)          # 展平张量
-        x = F.relu(self.fc1(x))               # 全连接层1 + ReLU
-        x = torch.sigmoid(self.fc2(x))        # 全连接层2 + Sigmoid激活函数
+        x = F.relu(self.fc1(x))                # 全连接层1 + ReLU
+        x = self.fc2(x)              # 全连接层2，无激活函数
+        # x = torch.sigmoid(self.fc2(x))        # 全连接层2 + Sigmoid激活函数
         return x
 
 model = SimpleCNN()
-model = model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
 
-
-criterion = nn.BCELoss()
+criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 for epoch in range(50):
     running_loss = 0.0
     for images, labels in trainset_dataloader:
-        images, labels = images.to(torch.device("cuda" if torch.cuda.is_available() else "cpu")), labels.to(torch.device("cuda" if torch.cuda.is_available() else "cpu")).float().unsqueeze(1)  # 将标签转换为float并增加维度
+        images, labels = images.to(device), labels.to(device)
         
         # 清零梯度
         optimizer.zero_grad()
@@ -111,8 +111,6 @@ for epoch in range(50):
         loss.backward()
         
         # 更新参数
-
-
         optimizer.step()
         
         # 记录损失
@@ -120,13 +118,13 @@ for epoch in range(50):
 
     print(f'Epoch [{epoch+1}/50], Loss: {running_loss/len(trainset_dataloader):.4f}')
      # Save the model if loss is less than 0.1
-    if running_loss < 0.1:
-        torch.save(model.state_dict(), f'simple_cnn_epoch_{epoch+1}_loss_{running_loss:.4f}.pth')
-        print(f'Saved model at epoch {epoch+1} with loss {running_loss:.4f}')
+    # if running_loss < 0.1:
+    #     torch.save(model.state_dict(), f'simple_cnn_epoch_{epoch+1}_loss_{running_loss:.4f}.pth')
+    #     print(f'Saved model at epoch {epoch+1} with loss {running_loss:.4f}')
 #     for name, param in model.named_parameters():
 #         if param.requires_grad:
 #             print(f'Layer: {name} | Size: {param.size()} | Values : {param[:2]}')  # 打印前两个值作为示例
-# torch.save(model.state_dict(), 'simple_cnn1.pth')
+torch.save(model.state_dict(), f'simple_cnn_epoch_{epoch+1}_loss_{running_loss:.4f}.pth')
 print('Finished Training')
 
 
